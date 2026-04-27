@@ -167,4 +167,37 @@ describe('getLatestVersion', () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true, json: () => ({ tag_name: 'v1.2.3' }) }));
     expect(await getLatestVersion()).toBe('1.2.3');
   });
+
+  test('passes signal to fetch', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: () => ({ tag_name: 'v1.0.0' }) });
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+
+    await getLatestVersion(controller.signal);
+
+    expect(fetchMock).toHaveBeenCalledWith(expect.any(String), expect.objectContaining({ signal: controller.signal }));
+  });
+});
+
+describe('downloadKdn signal', () => {
+  test('passes signal through to fetch calls', async () => {
+    const fetchMock: ReturnType<typeof vi.fn> = vi.fn((url: string) => {
+      if (String(url).includes('checksums')) {
+        return Promise.resolve({ ok: true, text: () => Promise.resolve('abc123  kdn_0.5.0_linux_amd64.tar.gz\n') });
+      }
+      return Promise.resolve({ ok: true, body: new PassThrough() });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+
+    vi.mocked(tar.extract).mockImplementation(async (opts: { cwd?: string }) => {
+      fileMap.set(normPath(path.join(opts.cwd ?? '', 'kdn')), true);
+    });
+
+    const controller = new AbortController();
+    await downloadKdn('0.5.0', 'linux', 'x64', '/output', controller.signal);
+
+    for (const call of fetchMock.mock.calls) {
+      expect(call[1]).toEqual(expect.objectContaining({ signal: controller.signal }));
+    }
+  });
 });

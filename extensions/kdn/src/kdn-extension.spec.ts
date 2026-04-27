@@ -19,13 +19,15 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-import type { ExtensionContext } from '@openkaiden/api';
+import type { CancellationToken, ExtensionContext, Progress } from '@openkaiden/api';
 import * as extensionApi from '@openkaiden/api';
 import { afterAll, beforeAll, beforeEach, expect, test, vi } from 'vitest';
 
+import { downloadKdn, getLatestVersion } from './kdn-download';
 import { KdnExtension } from './kdn-extension';
 
 vi.mock(import('node:fs'));
+vi.mock(import('./kdn-download'));
 
 let extensionContext: ExtensionContext;
 let kdnExtension: KdnExtension;
@@ -58,9 +60,20 @@ beforeEach(() => {
   } as unknown as ExtensionContext;
 
   kdnExtension = new KdnExtension(extensionContext);
+
+  vi.mocked(getLatestVersion).mockResolvedValue('0.5.0');
+
+  vi.mocked(extensionApi.window.withProgress).mockImplementation(async (_options, task) => {
+    const progress = { report: vi.fn() } as unknown as Progress<{ message?: string; increment?: number }>;
+    const token = {
+      isCancellationRequested: false,
+      onCancellationRequested: vi.fn(),
+    } as unknown as CancellationToken;
+    return task(progress, token);
+  });
 });
 
-test('registers from extension storage when binary exists', async () => {
+test('registers from extension storage when binary exists without downloading', async () => {
   vi.mocked(existsSync).mockReturnValue(true);
   vi.mocked(extensionApi.process.exec).mockResolvedValue({
     command: 'kdn',
@@ -71,6 +84,8 @@ test('registers from extension storage when binary exists', async () => {
 
   await kdnExtension.activate();
 
+  expect(getLatestVersion).not.toHaveBeenCalled();
+  expect(downloadKdn).not.toHaveBeenCalled();
   expect(extensionApi.cli.createCliTool).toHaveBeenCalledWith(
     expect.objectContaining({
       name: 'kdn',
@@ -81,7 +96,7 @@ test('registers from extension storage when binary exists', async () => {
   );
 });
 
-test('registers from system PATH when not in extension storage', async () => {
+test('falls back to system PATH before attempting download', async () => {
   vi.mocked(existsSync).mockReturnValue(false);
   vi.mocked(extensionApi.process.exec).mockResolvedValue({
     command: 'kdn',
@@ -92,6 +107,7 @@ test('registers from system PATH when not in extension storage', async () => {
 
   await kdnExtension.activate();
 
+  expect(downloadKdn).not.toHaveBeenCalled();
   expect(extensionApi.cli.createCliTool).toHaveBeenCalledWith(
     expect.objectContaining({
       name: 'kdn',
@@ -102,17 +118,16 @@ test('registers from system PATH when not in extension storage', async () => {
   );
 });
 
-test('registers from bundled resources when not in extension storage or PATH', async () => {
+test('falls back to bundled resources before attempting download', async () => {
   vi.mocked(existsSync).mockReturnValueOnce(false).mockReturnValueOnce(true);
-  vi.mocked(extensionApi.process.exec).mockRejectedValueOnce(new Error('not found')).mockResolvedValueOnce({
-    command: 'kdn',
-    stdout: '',
-    stderr: 'kdn version 0.4.0',
-  });
+  vi.mocked(extensionApi.process.exec)
+    .mockRejectedValueOnce(new Error('not found'))
+    .mockResolvedValueOnce({ command: 'kdn', stdout: '', stderr: 'kdn version 0.4.0' });
   vi.mocked(extensionApi.cli.createCliTool).mockReturnValue({ dispose: vi.fn() } as never);
 
   await kdnExtension.activate();
 
+  expect(downloadKdn).not.toHaveBeenCalled();
   expect(extensionApi.cli.createCliTool).toHaveBeenCalledWith(
     expect.objectContaining({
       name: 'kdn',
@@ -123,12 +138,44 @@ test('registers from bundled resources when not in extension storage or PATH', a
   );
 });
 
-test('does not register when not found anywhere', async () => {
+test('downloads binary in background when not found locally', async () => {
   vi.mocked(existsSync).mockReturnValue(false);
-  vi.mocked(extensionApi.process.exec).mockRejectedValue(new Error('not found'));
+  vi.mocked(extensionApi.process.exec)
+    .mockRejectedValueOnce(new Error('not found'))
+    .mockResolvedValueOnce({ command: 'kdn', stdout: '', stderr: 'kdn version 0.5.0' });
+  vi.mocked(extensionApi.cli.createCliTool).mockReturnValue({ dispose: vi.fn() } as never);
 
   await kdnExtension.activate();
+  await vi.waitFor(() => expect(extensionApi.cli.createCliTool).toHaveBeenCalled());
 
+  expect(extensionApi.window.withProgress).toHaveBeenCalledWith(
+    expect.objectContaining({ title: 'Downloading kdn CLI' }),
+    expect.any(Function),
+  );
+  expect(getLatestVersion).toHaveBeenCalledWith(expect.any(AbortSignal));
+  expect(downloadKdn).toHaveBeenCalledWith(
+    '0.5.0',
+    process.platform,
+    expect.any(String),
+    join('/storage', 'bin'),
+    expect.any(AbortSignal),
+  );
+  expect(extensionApi.cli.createCliTool).toHaveBeenCalledWith(
+    expect.objectContaining({
+      version: '0.5.0',
+      path: join('/storage', 'bin', 'kdn'),
+      installationSource: 'extension',
+    }),
+  );
+});
+
+test('download failure does not reject activate', async () => {
+  vi.mocked(existsSync).mockReturnValue(false);
+  vi.mocked(extensionApi.process.exec).mockRejectedValue(new Error('not found'));
+  vi.mocked(extensionApi.window.withProgress).mockRejectedValue(new Error('network error'));
+
+  await expect(kdnExtension.activate()).resolves.toBeUndefined();
+  await vi.waitFor(() => expect(extensionApi.window.withProgress).toHaveBeenCalled());
   expect(extensionApi.cli.createCliTool).not.toHaveBeenCalled();
 });
 

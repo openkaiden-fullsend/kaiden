@@ -29,7 +29,7 @@ import { sha256 } from './sha256';
 
 const KDN_REPO = 'openkaiden/kdn';
 
-export async function getLatestVersion(): Promise<string> {
+export async function getLatestVersion(signal?: AbortSignal): Promise<string> {
   const headers: Record<string, string> = { Accept: 'application/vnd.github.v3+json' };
   const token = process.env['GITHUB_TOKEN'];
   if (token) {
@@ -38,6 +38,7 @@ export async function getLatestVersion(): Promise<string> {
   const res = await fetch(`https://api.github.com/repos/${KDN_REPO}/releases/latest`, {
     headers,
     redirect: 'follow',
+    signal,
   });
   if (!res.ok) {
     throw new Error(`failed to fetch latest kdn release: ${res.status} ${res.statusText}`);
@@ -49,17 +50,22 @@ export async function getLatestVersion(): Promise<string> {
 const PLATFORM_MAP: Record<string, string> = { darwin: 'darwin', linux: 'linux', win32: 'windows' };
 const ARCH_MAP: Record<string, string> = { x64: 'amd64', arm64: 'arm64' };
 
-export async function download(url: string, dest: string): Promise<void> {
-  const res = await fetch(url, { redirect: 'follow' });
+export async function download(url: string, dest: string, signal?: AbortSignal): Promise<void> {
+  const res = await fetch(url, { redirect: 'follow', signal });
   if (!res.ok || !res.body) {
     throw new Error(`failed to download ${url}: ${res.status} ${res.statusText}`);
   }
   await pipeline(res.body, createWriteStream(dest));
 }
 
-export async function verifyChecksum(version: string, assetFileName: string, filePath: string): Promise<void> {
+export async function verifyChecksum(
+  version: string,
+  assetFileName: string,
+  filePath: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const checksumsUrl = `https://github.com/${KDN_REPO}/releases/download/v${version}/kdn_${version}_checksums.txt`;
-  const res = await fetch(checksumsUrl, { redirect: 'follow' });
+  const res = await fetch(checksumsUrl, { redirect: 'follow', signal });
   if (!res.ok) {
     throw new Error(`failed to download checksums: ${res.status} ${res.statusText}`);
   }
@@ -111,7 +117,13 @@ export async function extract(archive: string, outDir: string): Promise<void> {
   }
 }
 
-export async function downloadKdn(version: string, platform: string, arch: string, outputDir: string): Promise<void> {
+export async function downloadKdn(
+  version: string,
+  platform: string,
+  arch: string,
+  outputDir: string,
+  signal?: AbortSignal,
+): Promise<void> {
   const versionFile = join(outputDir, '.kdn-version');
   const versionMarker = `${version}-${platform}-${arch}`;
   const binaryPath = join(outputDir, platform === 'win32' ? 'kdn.exe' : 'kdn');
@@ -137,8 +149,8 @@ export async function downloadKdn(version: string, platform: string, arch: strin
   const archivePath = join(outputDir, assetFileName);
 
   console.log(`downloading kdn ${version} for ${platform}/${arch}...`);
-  await download(url, archivePath);
-  await verifyChecksum(version, assetFileName, archivePath);
+  await download(url, archivePath, signal);
+  await verifyChecksum(version, assetFileName, archivePath, signal);
 
   console.log(`extracting to ${outputDir}...`);
   await extract(archivePath, outputDir);
@@ -174,7 +186,14 @@ function parseArgs(args: string[]): { output: string; platform: string; arch: st
   return { output: values.output, platform: values.platform, arch: values.arch };
 }
 
-if (!process.env['VITEST']) {
+// This module is both a library (imported by kdn-extension.ts) and a standalone
+// CLI script (invoked by electron-builder via `node kdn-download.js --output=...`).
+// Only run parseArgs when executed directly; Electron's argv contains positional
+// args like "." that cause parseArgs with strict mode to throw.
+const isDirectExecution =
+  !process.env['VITEST'] && process.argv[1] && normalize(process.argv[1]) === normalize(__filename);
+
+if (isDirectExecution) {
   const { output, platform, arch } = parseArgs(process.argv.slice(2));
   getLatestVersion()
     .then(version => downloadKdn(version, platform, arch, output))
