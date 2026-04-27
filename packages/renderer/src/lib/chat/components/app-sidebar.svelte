@@ -11,8 +11,9 @@ import { Tooltip, TooltipContent, TooltipTrigger } from './ui/tooltip';
 
 interface Props {
   chatId?: string;
+  hasModels?: boolean;
 }
-let { chatId }: Props = $props();
+let { chatId, hasModels = false }: Props = $props();
 const context = useSidebar();
 </script>
 
@@ -32,6 +33,7 @@ const context = useSidebar();
 						Chatbot
 					</span>
 				</a>
+			{#if hasModels}
 				<Tooltip>
 					<TooltipTrigger>
 						{#snippet child({ props })}
@@ -56,11 +58,14 @@ const context = useSidebar();
 					</TooltipTrigger>
 					<TooltipContent side="bottom" align="end">New Chat</TooltipContent>
 				</Tooltip>
+			{/if}
 			</div>
 		</SidebarMenu>
 	</SidebarHeader>
-	<SidebarContent>
-		<SidebarHistory {chatId} />
-	</SidebarContent>
+	{#if hasModels}
+		<SidebarContent>
+			<SidebarHistory {chatId} />
+		</SidebarContent>
+	{/if}
 </Sidebar>
 {/if}

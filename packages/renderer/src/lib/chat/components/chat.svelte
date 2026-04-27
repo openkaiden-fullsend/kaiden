@@ -303,7 +303,9 @@ $effect(() => {
 </script>
 
 <div class="bg-background flex h-full min-w-0 flex-col">
-  <ChatHeader />
+  {#if hasModels}
+    <ChatHeader />
+  {/if}
   <div class="flex min-h-0 flex-1">
         {#if hasModels}
             <div class="flex flex-col flex-3/4">

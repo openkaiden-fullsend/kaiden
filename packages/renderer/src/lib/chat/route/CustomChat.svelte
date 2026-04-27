@@ -9,7 +9,9 @@ import { Toaster } from '/@/lib/chat/components/ui/sonner';
 import { ChatHistory } from '/@/lib/chat/hooks/chat-history.svelte.js';
 import { currentChatId } from '/@/lib/chat/state/current-chat-id.svelte';
 import { sidebarCollapsed } from '/@/lib/chat/state/sidebar-collapsed.svelte';
+import { getModels } from '/@/lib/models/models-utils';
 import { isDark } from '/@/stores/appearance';
+import { providerInfos } from '/@/stores/providers';
 
 interface Props {
   chatId?: string;
@@ -28,6 +30,8 @@ const chatMessagesPromise = $derived(
 
 onDestroy(() => chatHistory.dispose());
 
+const hasModels = $derived(getModels($providerInfos).length > 0);
+
 // Sync the chat's ThemeProvider with the app's appearance setting
 const forcedTheme = $derived($isDark ? 'dark' : 'light');
 </script>
@@ -39,7 +43,7 @@ const forcedTheme = $derived($isDark ? 'dark' : 'light');
     Loading
   {:then { chat, messages }}
     <SidebarProvider open={!sidebarCollapsed.value} onOpenChange={(open: boolean): boolean => sidebarCollapsed.value = !open}>
-      <AppSidebar {chatId} />
+      <AppSidebar {chatId} {hasModels} />
       <SidebarInset>
         <Chat {chat} {messages} readonly={false} />
       </SidebarInset>
