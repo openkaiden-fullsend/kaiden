@@ -61,6 +61,11 @@ export class AgentWorkspaceManager implements Disposable {
   }
 
   async create(options: AgentWorkspaceCreateOptions): Promise<AgentWorkspaceId> {
+    // Expand leading tilde to the user's home directory
+    if (options.sourcePath.startsWith('~/') || options.sourcePath === '~') {
+      options = { ...options, sourcePath: options.sourcePath.replace('~', homedir()) };
+    }
+
     const suffix = options.name ? ` "${options.name}"` : '';
     const task = this.taskManager.createTask({ title: `Creating workspace${suffix}` });
     task.state = 'running';
