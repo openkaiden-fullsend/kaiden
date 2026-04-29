@@ -452,6 +452,35 @@ describe('createSecret', () => {
 
     await expect(kdnCli.createSecret(defaultOptions)).rejects.toThrow('Error: secret already exists: my-secret');
   });
+
+  test('should not log secret value when createSecret fails', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(exec.exec).mockRejectedValue(new Error('duplicate secret'));
+
+    await expect(kdnCli.createSecret(defaultOptions)).rejects.toThrow('duplicate secret');
+
+    expect(errorSpy).toHaveBeenCalledOnce();
+    const loggedMessage = errorSpy.mock.calls[0]?.[0] as string;
+    expect(loggedMessage).not.toContain('ghp_abc123');
+    expect(loggedMessage).toContain('[REDACTED]');
+    expect(loggedMessage).toContain('--value');
+  });
+
+  test('should redact secret value with special characters on failure', async () => {
+    vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const errorSpy = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    vi.mocked(exec.exec).mockRejectedValue(new Error('duplicate secret'));
+
+    const secretWithSpecialChars = 'p@$$w0rd!#%^&*()';
+    await expect(kdnCli.createSecret({ ...defaultOptions, value: secretWithSpecialChars })).rejects.toThrow(
+      'duplicate secret',
+    );
+
+    const loggedMessage = errorSpy.mock.calls[0]?.[0] as string;
+    expect(loggedMessage).not.toContain(secretWithSpecialChars);
+    expect(loggedMessage).toContain('[REDACTED]');
+  });
 });
 
 describe('listSecrets', () => {
