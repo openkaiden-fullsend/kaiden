@@ -38,6 +38,9 @@ import type { SecretCreateOptions, SecretInfo, SecretName, SecretService } from 
  */
 @injectable()
 export class KdnCli {
+  /** Flags whose next positional argument contains secret material. */
+  private static readonly SENSITIVE_FLAGS: ReadonlySet<string> = new Set(['--value']);
+
   constructor(
     @inject(Exec)
     private readonly exec: Exec,
@@ -80,7 +83,7 @@ export class KdnCli {
   async getInfo(): Promise<CliInfo> {
     const cliPath = this.getCliPath();
     const args = ['info', '--output', 'json'];
-    console.log(`Executing: ${cliPath} ${args.join(' ')}`);
+    console.log(`Executing: ${cliPath} ${this.sanitizeArgs(args).join(' ')}`);
     try {
       const result = await this.exec.exec(cliPath, args);
       const info: unknown = JSON.parse(result.stdout);
@@ -91,7 +94,7 @@ export class KdnCli {
       return info as CliInfo;
     } catch (err: unknown) {
       const detail = this.extractCliError(err);
-      console.error(`kdn failed: ${cliPath} ${args.join(' ')} — ${detail}`);
+      console.error(`kdn failed: ${cliPath} ${this.sanitizeArgs(args).join(' ')} — ${detail}`);
       throw new Error(detail);
     }
   }
@@ -106,13 +109,13 @@ export class KdnCli {
     if (options.project) {
       args.push('--project', options.project);
     }
-    console.log(`Executing: ${cliPath} ${args.join(' ')}`);
+    console.log(`Executing: ${cliPath} ${this.sanitizeArgs(args).join(' ')}`);
     try {
       const result = await this.exec.exec(cliPath, args);
       return JSON.parse(result.stdout) as AgentWorkspaceId;
     } catch (err: unknown) {
       const detail = this.extractCliError(err);
-      console.error(`kdn failed: ${cliPath} ${args.join(' ')} — ${detail}`);
+      console.error(`kdn failed: ${cliPath} ${this.sanitizeArgs(args).join(' ')} — ${detail}`);
       throw new Error(detail);
     }
   }
@@ -134,6 +137,30 @@ export class KdnCli {
     return this.execCLI<AgentWorkspaceId>(['workspace', 'stop', id]);
   }
 
+  /**
+   * Redact values following sensitive flags in a CLI args array.
+   *
+   * Any argument immediately after a flag in {@link SENSITIVE_FLAGS}
+   * is replaced with `[REDACTED]` so that secret material is never
+   * written to logs.
+   */
+  private sanitizeArgs(args: readonly string[]): string[] {
+    const result: string[] = [];
+    let redactNext = false;
+    for (const arg of args) {
+      if (redactNext) {
+        result.push('[REDACTED]');
+        redactNext = false;
+      } else if (KdnCli.SENSITIVE_FLAGS.has(arg)) {
+        result.push(arg);
+        redactNext = true;
+      } else {
+        result.push(arg);
+      }
+    }
+    return result;
+  }
+
   private async execCLI<T>(args: string[], options?: RunOptions): Promise<T> {
     const cliPath = this.getCliPath();
     const fullArgs = [...args, '--output', 'json'];
@@ -142,7 +169,7 @@ export class KdnCli {
       return JSON.parse(result.stdout) as T;
     } catch (err: unknown) {
       const detail = this.extractCliError(err);
-      console.error(`kdn failed: ${cliPath} ${fullArgs.join(' ')} — ${detail}`);
+      console.error(`kdn failed: ${cliPath} ${this.sanitizeArgs(fullArgs).join(' ')} — ${detail}`);
       throw new Error(detail);
     }
   }
