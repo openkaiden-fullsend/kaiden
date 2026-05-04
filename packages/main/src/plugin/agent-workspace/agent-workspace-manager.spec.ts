@@ -17,6 +17,7 @@
  ***********************************************************************/
 
 import { readFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { join } from 'node:path';
 
 import type { FileSystemWatcher } from '@openkaiden/api';
@@ -243,6 +244,46 @@ describe('create', () => {
     await manager.create(defaultOptions);
 
     expect(apiSender.send).toHaveBeenCalledWith('agent-workspace-update');
+  });
+
+  test('expands leading tilde in sourcePath to home directory', async () => {
+    vi.mocked(kdnCli.createWorkspace).mockResolvedValue({ id: 'ws-new' });
+
+    await manager.create({ ...defaultOptions, sourcePath: '~/projects/ws' });
+
+    expect(kdnCli.createWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePath: `${homedir()}/projects/ws` }),
+    );
+  });
+
+  test('passes absolute sourcePath through unchanged', async () => {
+    vi.mocked(kdnCli.createWorkspace).mockResolvedValue({ id: 'ws-new' });
+
+    await manager.create({ ...defaultOptions, sourcePath: '/home/user/ws' });
+
+    expect(kdnCli.createWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePath: '/home/user/ws' }),
+    );
+  });
+
+  test('does not expand tilde in the middle of sourcePath', async () => {
+    vi.mocked(kdnCli.createWorkspace).mockResolvedValue({ id: 'ws-new' });
+
+    await manager.create({ ...defaultOptions, sourcePath: 'foo/~/bar' });
+
+    expect(kdnCli.createWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePath: 'foo/~/bar' }),
+    );
+  });
+
+  test('expands bare tilde sourcePath to home directory', async () => {
+    vi.mocked(kdnCli.createWorkspace).mockResolvedValue({ id: 'ws-new' });
+
+    await manager.create({ ...defaultOptions, sourcePath: '~' });
+
+    expect(kdnCli.createWorkspace).toHaveBeenCalledWith(
+      expect.objectContaining({ sourcePath: homedir() }),
+    );
   });
 });
 
