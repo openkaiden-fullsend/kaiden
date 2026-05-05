@@ -27,7 +27,7 @@ const config = {
   root: PACKAGE_ROOT,
   test: {
     globals: true,
-    include: ['*.{test,spec}.ts'],
+    include: ['**/*.{test,spec}.ts'],
   },
 };
 
