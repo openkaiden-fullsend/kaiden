@@ -47,7 +47,7 @@
     "test:main": "vitest --run --project=main --passWithNoTests",
     "test:preload": "vitest --run --project=preload --passWithNoTests",
     "test:preload-webview": "vitest --run --project=preload-webview",
-    "test:extensions": "pnpm run test:extension:claude && pnpm run test:extension:container && pnpm run test:extension:docling && pnpm run test:extension:gemini && pnpm run test:extension:kdn && pnpm run test:extension:mcp-registries && pnpm run test:extension:mistral && pnpm run test:extension:milvus && pnpm run test:extension:ollama && pnpm run test:extension:openai-compatible && pnpm run test:extension:openshift-ai && pnpm run test:extension:ramalama",
+    "test:extensions": "vitest run -c extensions/vitest.config.js --passWithNoTests && pnpm run test:extension:claude && pnpm run test:extension:container && pnpm run test:extension:docling && pnpm run test:extension:gemini && pnpm run test:extension:kdn && pnpm run test:extension:mcp-registries && pnpm run test:extension:mistral && pnpm run test:extension:milvus && pnpm run test:extension:ollama && pnpm run test:extension:openai-compatible && pnpm run test:extension:openshift-ai && pnpm run test:extension:ramalama",
     "test:extension:claude": "cd ./extensions/claude && vitest run --passWithNoTests",
     "test:extension:container": "cd ./extensions/container/packages/extension && vitest run --passWithNoTests",
     "test:extension:docling": "cd ./extensions/docling && vitest run --passWithNoTests",
